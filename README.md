@@ -49,6 +49,16 @@ The Intric platform consists of several components working together:
                     └─────────────┘     └─────────────┘
 ```
 
+## Development vs Production Configuration
+
+This repository contains two different Docker Compose configurations:
+
+1. **Root docker-compose.yml**: The main configuration file intended for **production deployment**. This file defines all services required for a complete Intric platform deployment, including the containerized frontend and backend applications, worker processes, and infrastructure components.
+
+2. **backend/docker-compose.yml**: A simplified configuration intended for **local development only**. This file only contains the infrastructure services (PostgreSQL with pgvector and Redis) needed during development. It does not include the application containers because in development mode, the frontend and backend are run directly on the host machine.
+
+When deploying to production, always use the docker-compose.yml file in the root directory. The backend/docker-compose.yml file can be safely ignored for production deployments.
+
 ## Building and Publishing Images
 
 The Intric platform is designed to be fully containerized with images stored in a Docker registry such as Nexus. This approach simplifies deployment and ensures consistency across environments.
@@ -158,6 +168,11 @@ Since Intric uses pgvector for vector embeddings, its memory requirements are op
 ### Configuration
 
 The entire Intric platform is configured through environment variables in a `.env` file:
+
+> **Important Note**: The docker-compose.yml file uses the pattern `${VARIABLE_NAME:-default_value}` for environment variables. This means:
+> - If the variable is defined in your .env file, that value will be used
+> - If not defined in .env, the default value specified in docker-compose.yml will be used
+> - You don't need to modify the docker-compose.yml file directly - all configuration should be done through the .env file
 
 #### Network Configuration
 - `SERVICE_FQDN_FRONTEND`: Frontend domain name
