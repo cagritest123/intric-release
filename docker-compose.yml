@@ -1,0 +1,185 @@
+version: '3.8'
+
+services:
+  frontend:
+    image: ${NEXUS_REGISTRY}/intric/frontend:${IMAGE_TAG}
+    ports:
+      - "${FRONTEND_PORT:-3000}:3000"
+    environment:
+      - NODE_ENV=production
+      # SvelteKit requires ORIGIN to be set correctly for CSRF protection
+      - ORIGIN=https://${SERVICE_FQDN_FRONTEND:-example.com}
+      - INTRIC_BACKEND_URL=http://backend:8123
+      - JWT_SECRET=${JWT_SECRET}
+      # Optional frontend-specific settings
+      - MOBILITY_GUARD_AUTH=${MOBILITY_GUARD_AUTH:-}
+      - SHOW_TEMPLATES=${SHOW_TEMPLATES:-}
+      - FEEDBACK_FORM_URL=${FEEDBACK_FORM_URL:-}
+    restart: unless-stopped
+    networks:
+      - intric-network
+    depends_on:
+      - backend
+
+  backend:
+    image: ${NEXUS_REGISTRY}/intric/backend:${IMAGE_TAG}
+    ports:
+      - "${BACKEND_PORT:-8123}:8123"
+    environment:
+      # Infrastructure dependencies
+      - POSTGRES_USER=${POSTGRES_USER:-postgres}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_PORT=${POSTGRES_PORT:-5432}
+      - POSTGRES_HOST=db
+      - POSTGRES_DB=${POSTGRES_DB:-postgres}
+      - REDIS_HOST=redis
+      - REDIS_PORT=${REDIS_PORT:-6379}
+      # API keys and model URLs
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - AZURE_API_KEY=${AZURE_API_KEY:-}
+      - AZURE_MODEL_DEPLOYMENT=${AZURE_MODEL_DEPLOYMENT:-}
+      - AZURE_ENDPOINT=${AZURE_ENDPOINT:-}
+      - AZURE_API_VERSION=${AZURE_API_VERSION:-}
+      # Authentication dependencies
+      - MOBILITYGUARD_DISCOVERY_ENDPOINT=${MOBILITYGUARD_DISCOVERY_ENDPOINT:-}
+      - MOBILITYGUARD_CLIENT_ID=${MOBILITYGUARD_CLIENT_ID:-}
+      - MOBILITYGUARD_CLIENT_SECRET=${MOBILITYGUARD_CLIENT_SECRET:-}
+      # Max sizes
+      - UPLOAD_FILE_TO_SESSION_MAX_SIZE=${UPLOAD_FILE_TO_SESSION_MAX_SIZE:-1048576}
+      - UPLOAD_IMAGE_TO_SESSION_MAX_SIZE=${UPLOAD_IMAGE_TO_SESSION_MAX_SIZE:-1048576}
+      - UPLOAD_MAX_FILE_SIZE=${UPLOAD_MAX_FILE_SIZE:-10485760}
+      - TRANSCRIPTION_MAX_FILE_SIZE=${TRANSCRIPTION_MAX_FILE_SIZE:-10485760}
+      - MAX_IN_QUESTION=${MAX_IN_QUESTION:-1}
+      # Feature flags
+      - USING_ACCESS_MANAGEMENT=${USING_ACCESS_MANAGEMENT:-False}
+      - USING_AZURE_MODELS=${USING_AZURE_MODELS:-False}
+      # Security
+      - API_PREFIX=${API_PREFIX:-/api/v1}
+      - API_KEY_LENGTH=${API_KEY_LENGTH:-64}
+      - API_KEY_HEADER_NAME=${API_KEY_HEADER_NAME:-example}
+      - JWT_AUDIENCE=${JWT_AUDIENCE:-*}
+      - JWT_ISSUER=${JWT_ISSUER:-EXAMPLE}
+      - JWT_EXPIRY_TIME=${JWT_EXPIRY_TIME:-86000}
+      - JWT_ALGORITHM=${JWT_ALGORITHM:-HS256}
+      - JWT_SECRET=${JWT_SECRET}
+      - JWT_TOKEN_PREFIX=${JWT_TOKEN_PREFIX:-}
+      # Log
+      - LOGLEVEL=${LOGLEVEL:-INFO}
+    restart: unless-stopped
+    volumes:
+      - backend_data:/app/data
+    networks:
+      - intric-network
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  worker:
+    image: ${NEXUS_REGISTRY}/intric/backend:${IMAGE_TAG}
+    command: ["poetry", "run", "arq", "intric.worker.arq.WorkerSettings"]
+    environment:
+      # Same environment variables as backend
+      - POSTGRES_USER=${POSTGRES_USER:-postgres}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_PORT=${POSTGRES_PORT:-5432}
+      - POSTGRES_HOST=db
+      - POSTGRES_DB=${POSTGRES_DB:-postgres}
+      - REDIS_HOST=redis
+      - REDIS_PORT=${REDIS_PORT:-6379}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - AZURE_API_KEY=${AZURE_API_KEY:-}
+      - AZURE_MODEL_DEPLOYMENT=${AZURE_MODEL_DEPLOYMENT:-}
+      - AZURE_ENDPOINT=${AZURE_ENDPOINT:-}
+      - AZURE_API_VERSION=${AZURE_API_VERSION:-}
+      - MOBILITYGUARD_DISCOVERY_ENDPOINT=${MOBILITYGUARD_DISCOVERY_ENDPOINT:-}
+      - MOBILITYGUARD_CLIENT_ID=${MOBILITYGUARD_CLIENT_ID:-}
+      - MOBILITYGUARD_CLIENT_SECRET=${MOBILITYGUARD_CLIENT_SECRET:-}
+      - UPLOAD_FILE_TO_SESSION_MAX_SIZE=${UPLOAD_FILE_TO_SESSION_MAX_SIZE:-1048576}
+      - UPLOAD_IMAGE_TO_SESSION_MAX_SIZE=${UPLOAD_IMAGE_TO_SESSION_MAX_SIZE:-1048576}
+      - UPLOAD_MAX_FILE_SIZE=${UPLOAD_MAX_FILE_SIZE:-10485760}
+      - TRANSCRIPTION_MAX_FILE_SIZE=${TRANSCRIPTION_MAX_FILE_SIZE:-10485760}
+      - MAX_IN_QUESTION=${MAX_IN_QUESTION:-1}
+      - USING_ACCESS_MANAGEMENT=${USING_ACCESS_MANAGEMENT:-False}
+      - USING_AZURE_MODELS=${USING_AZURE_MODELS:-False}
+      - API_PREFIX=${API_PREFIX:-/api/v1}
+      - API_KEY_LENGTH=${API_KEY_LENGTH:-64}
+      - API_KEY_HEADER_NAME=${API_KEY_HEADER_NAME:-example}
+      - JWT_AUDIENCE=${JWT_AUDIENCE:-*}
+      - JWT_ISSUER=${JWT_ISSUER:-EXAMPLE}
+      - JWT_EXPIRY_TIME=${JWT_EXPIRY_TIME:-86000}
+      - JWT_ALGORITHM=${JWT_ALGORITHM:-HS256}
+      - JWT_SECRET=${JWT_SECRET}
+      - JWT_TOKEN_PREFIX=${JWT_TOKEN_PREFIX:-}
+      - LOGLEVEL=${LOGLEVEL:-INFO}
+    restart: unless-stopped
+    networks:
+      - intric-network
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  db:
+    image: pgvector/pgvector:pg13
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER:-postgres}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=${POSTGRES_DB:-postgres}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - intric-network
+
+  redis:
+    image: redis
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - intric-network
+
+  # Database initialization service (only run with --profile init)
+  db-init:
+    image: ${NEXUS_REGISTRY}/intric/backend:${IMAGE_TAG}
+    command: ["poetry", "run", "python", "init_db.py"]
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER:-postgres}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_PORT=${POSTGRES_PORT:-5432}
+      - POSTGRES_HOST=db
+      - POSTGRES_DB=${POSTGRES_DB:-postgres}
+      - REDIS_HOST=redis
+      - REDIS_PORT=${REDIS_PORT:-6379}
+      - JWT_SECRET=${JWT_SECRET}
+      - LOGLEVEL=${LOGLEVEL:-INFO}
+    networks:
+      - intric-network
+    depends_on:
+      db:
+        condition: service_healthy
+    profiles:
+      - init
+
+networks:
+  intric-network:
+
+volumes:
+  postgres_data:
+  redis_data:
+  backend_data:
