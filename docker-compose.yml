@@ -157,7 +157,7 @@ services:
   # Database initialization service (only run with --profile init)
   db-init:
     image: ${NEXUS_REGISTRY}/intric/backend:${IMAGE_TAG}
-    command: ["poetry", "run", "python", "init_db.py"]
+    command: ["python", "init_db.py"]
     environment:
       - POSTGRES_USER=${POSTGRES_USER:-postgres}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}

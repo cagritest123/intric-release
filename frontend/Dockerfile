@@ -3,9 +3,10 @@ WORKDIR /app
 
 # Install dependencies stage
 FROM base AS dependencies
-RUN npm install -g pnpm@8.9.0
+RUN npm install -g pnpm@9.12.3
 
 # Copy package files for dependency installation
+COPY pnpm-workspace.yaml ./
 COPY package.json pnpm-lock.yaml ./
 COPY apps/web/package.json ./apps/web/
 COPY packages/intric-js/package.json ./packages/intric-js/
@@ -13,13 +14,17 @@ COPY packages/ui/package.json ./packages/ui/
 
 # Set pnpm store directory and install dependencies
 RUN pnpm config set store-dir /tmp/pnpm-store
+
 RUN pnpm install --frozen-lockfile
 
 # Build stage
 FROM base AS build
-RUN npm install -g pnpm@8.9.0
-COPY --from=dependencies /app/node_modules ./node_modules
+RUN npm install -g pnpm@9.12.3
+# Copy the entire app directory with dependencies from the dependencies stage
+COPY --from=dependencies /app ./
+# Now copy the source code (will not overwrite the node_modules)
 COPY . .
+
 
 # Build UI packages first
 RUN pnpm run --filter @intric/ui... build
